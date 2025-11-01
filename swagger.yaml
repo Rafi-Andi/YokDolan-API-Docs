@@ -1,0 +1,222 @@
+openapi: 3.0.0
+info:
+  title: YokDolan - CodePreneur API
+  version: 1.0.0
+  description: API untuk mendukung aplikasi gamifikasi wisata YokDolan, mencakup alur klaim QR Code, penukaran poin, dan analitik dashboard.
+servers:
+  - url: https://api.yokdolan.co.id/v1
+    description: Production Server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ClaimRequest:
+      type: object
+      properties:
+        qr_code_data:
+          type: string
+          description: Hash unik dari QR Code yang di-scan Mitra.
+          example: UNIQUE-HASH-123
+      required:
+        - qr_code_data
+    ExchangeRequest:
+      type: object
+      properties:
+        reward_id:
+          type: integer
+          description: ID Reward yang dipilih Wisatawan dari Katalog.
+          example: 20
+      required:
+        - reward_id
+    MissionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Belajar Membatik
+        type:
+          type: string
+          enum: [transaksi, interaksi]
+          example: interaksi
+        reward_points:
+          type: integer
+          example: 50
+      required:
+        - title
+        - reward_points
+    ValidationRequest:
+      type: object
+      properties:
+        voucher_code:
+          type: string
+          description: Kode unik dari Voucher Digital yang ditunjukkan Wisatawan.
+          example: VOUCHER-XYZ123
+      required:
+        - voucher_code
+
+paths:
+  /home:
+    get:
+      tags:
+        - I. Wisatawan (Beranda)
+      summary: Mendapatkan data Beranda, Profil ringkas, dan Rekomendasi Misi.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Data berhasil diambil.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      name: {type: string}
+                      point_value: {type: integer}
+                  channels:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: integer}
+                        name: {type: string}
+                  misi_populer:
+                    type: array
+                    items: {type: object}
+
+  /search:
+    get:
+      tags:
+        - I. Wisatawan (Beranda)
+      summary: Pencarian Misi, Mitra Ekraf, atau Lokasi.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Hasil pencarian.
+
+  /mission/claim:
+    post:
+      tags:
+        - II. Fitur Utama 1 (Klaim QR)
+      summary: Memproses klaim poin misi melalui scan QR Code.
+      description: Memvalidasi Kode QR dan mencatat klaim (mencegah double-claim) serta memberikan Point Value.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimRequest'
+      responses:
+        '200':
+          description: Klaim berhasil, poin ditambahkan.
+          content:
+            application/json:
+              example: {message: "Klaim Misi Sukses!", point_added: 50, new_point_value: 400}
+        '403':
+          description: Misi sudah pernah diklaim atau tidak aktif.
+
+  /rewards:
+    get:
+      tags:
+        - III. Fitur Utama 2 (Katalog Reward)
+      summary: Mendapatkan Katalog Reward.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: channel
+          in: query
+          schema: {type: integer}
+      responses:
+        '200':
+          description: Daftar reward tersedia.
+
+  /rewards/exchange:
+    post:
+      tags:
+        - III. Fitur Utama 2 (Katalog Reward)
+      summary: Menukarkan Point Value menjadi Voucher Digital.
+      description: Mengurangi Point Value pengguna dan mencatat pertukaran sebagai voucher digital (status pending).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExchangeRequest'
+      responses:
+        '200':
+          description: Penukaran berhasil, voucher_code dihasilkan.
+          content:
+            application/json:
+              example: {message: "Penukaran berhasil!", voucher_code: "VOUCHER-XYZ123", new_point_value: 50}
+        '400':
+          description: Point Value tidak mencukupi.
+
+  /partner/missions:
+    post:
+      tags:
+        - IV. Dasbor Mitra Ekraf
+      summary: Membuat Misi baru (Generator QR Code).
+      description: Mitra membuat Misi baru, sistem menghasilkan ID unik (qr_code_unique_id).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MissionRequest'
+      responses:
+        '201':
+          description: Misi berhasil dibuat.
+
+  /partner/exchange/validate:
+    post:
+      tags:
+        - IV. Dasbor Mitra Ekraf
+      summary: Validasi Voucher oleh Mitra (Sekali Klik).
+      description: Mitra mengkonfirmasi Voucher Digital, mengubah status di database menjadi 'validated' (menutup transaksi).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationRequest'
+      responses:
+        '200':
+          description: Voucher berhasil divalidasi.
+        '404':
+          description: Voucher tidak ditemukan atau sudah divalidasi.
+
+  /owner/analytics/performance:
+    get:
+      tags:
+        - V. Dasbor Pemilik Wisata (Analitik)
+      summary: Mendapatkan Data Analitik Kinerja Channel.
+      description: Data agregat Misi, klaim, dan sirkulasi poin untuk Smart Tourism.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Data analitik berhasil diambil.
+          content:
+            application/json:
+              example: {total_misi_claims: 1200, sirkulasi_poin: 50000, top_missions: [{title: "...", claims: 90}]}
