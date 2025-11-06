@@ -1,11 +1,23 @@
 openapi: 3.0.0
 info:
-  title: YokDolan - CodePreneur API
+  title: Yokdolan - Misi Budaya Jatim API
+  description: API Spesifikasi lengkap untuk Modul Wisatawan, Mitra Ekraf, Pemilik Wisata, dan Admin Yokdolan.
   version: 1.0.0
-  description: API untuk mendukung aplikasi gamifikasi wisata YokDolan, mencakup alur klaim QR Code, penukaran poin, dan analitik dashboard.
 servers:
-  - url: https://api.yokdolan.co.id/v1
+  - url: https://api.yokdolan.id/api/v1
     description: Production Server
+
+tags:
+  - name: 1. Auth & Umum
+    description: Registrasi dan Login untuk semua peran.
+  - name: 2. Modul Wisatawan
+    description: Endpoint untuk pengguna akhir (Gamifikasi, Misi, Reward).
+  - name: 3. Modul Mitra Ekraf
+    description: Endpoint untuk Tuan Rumah Misi (Manajemen Misi & Validasi).
+  - name: 4. Modul Pemilik Wisata
+    description: Endpoint untuk Channel Owner (Kurasi Channel & Mitra).
+  - name: 5. Modul Admin Super
+    description: Endpoint untuk Pengawasan Operasional dan Verifikasi Lembaga.
 
 components:
   securitySchemes:
@@ -13,210 +25,261 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-  schemas:
-    ClaimRequest:
-      type: object
-      properties:
-        qr_code_data:
-          type: string
-          description: Hash unik dari QR Code yang di-scan Mitra.
-          example: UNIQUE-HASH-123
-      required:
-        - qr_code_data
-    ExchangeRequest:
-      type: object
-      properties:
-        reward_id:
-          type: integer
-          description: ID Reward yang dipilih Wisatawan dari Katalog.
-          example: 20
-      required:
-        - reward_id
-    MissionRequest:
-      type: object
-      properties:
-        title:
-          type: string
-          example: Belajar Membatik
-        type:
-          type: string
-          enum: [transaksi, interaksi]
-          example: interaksi
-        reward_points:
-          type: integer
-          example: 50
-      required:
-        - title
-        - reward_points
-    ValidationRequest:
-      type: object
-      properties:
-        voucher_code:
-          type: string
-          description: Kode unik dari Voucher Digital yang ditunjukkan Wisatawan.
-          example: VOUCHER-XYZ123
-      required:
-        - voucher_code
 
 paths:
-  /home:
-    get:
-      tags:
-        - I. Wisatawan (Beranda)
-      summary: Mendapatkan data Beranda, Profil ringkas, dan Rekomendasi Misi.
-      security:
-        - bearerAuth: []
+  # --- 1. AUTH & UMUM ---
+  /register:
+    post:
+      tags: [1. Auth & Umum]
+      summary: Registrasi Wisatawan (Pengguna Biasa)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                email: {type: string}
+                password: {type: string}
       responses:
-        '200':
-          description: Data berhasil diambil.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  user:
-                    type: object
-                    properties:
-                      name: {type: string}
-                      point_value: {type: integer}
-                  channels:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id: {type: integer}
-                        name: {type: string}
-                  misi_populer:
-                    type: array
-                    items: {type: object}
+        '200': {description: Registrasi berhasil}
+  /login:
+    post:
+      tags: [1. Auth & Umum]
+      summary: Login untuk Semua Peran (Wisatawan, Mitra, Owner)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: {type: string}
+                password: {type: string}
+      responses:
+        '200': {description: Login berhasil, mengembalikan token dan role}
 
-  /search:
+  # --- 2. MODUL WISATAWAN ---
+  /dashboard:
     get:
-      tags:
-        - I. Wisatawan (Beranda)
-      summary: Pencarian Misi, Mitra Ekraf, atau Lokasi.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: query
-          in: query
-          required: true
-          schema:
-            type: string
+      tags: [2. Modul Wisatawan]
+      summary: Dashboard Beranda Wisatawan
+      security: [{bearerAuth: []}]
       responses:
-        '200':
-          description: Hasil pencarian.
+        '200': {description: Data dashboard (saldo PV, Channel terbaru)}
+
+  /channels:
+    get:
+      tags: [2. Modul Wisatawan]
+      summary: Daftar Channel Wisata (Channel Explorer)
+      responses:
+        '200': {description: Daftar Channel yang aktif}
+
+  /missions:
+    get:
+      tags: [2. Modul Wisatawan]
+      summary: Daftar Misi Berdasarkan Channel
+      parameters:
+        - in: query
+          name: channel_id
+          schema: {type: string}
+      responses:
+        '200': {description: Daftar misi tersedia}
 
   /mission/claim:
     post:
-      tags:
-        - II. Fitur Utama 1 (Klaim QR)
-      summary: Memproses klaim poin misi melalui scan QR Code.
-      description: Memvalidasi Kode QR dan mencatat klaim (mencegah double-claim) serta memberikan Point Value.
-      security:
-        - bearerAuth: []
+      tags: [2. Modul Wisatawan]
+      summary: Validasi Misi Instan (Scan QR)
+      security: [{bearerAuth: []}]
+      description: Mengklaim PV/Akumulasi setelah memindai QR Code di lokasi Mitra.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ClaimRequest'
+              type: object
+              properties:
+                mission_token: {type: string, description: Token dari QR Code hasil scan}
       responses:
-        '200':
-          description: Klaim berhasil, poin ditambahkan.
-          content:
-            application/json:
-              example: {message: "Klaim Misi Sukses!", point_added: 50, new_point_value: 400}
-        '403':
-          description: Misi sudah pernah diklaim atau tidak aktif.
+        '200': {description: Poin berhasil ditambahkan}
 
   /rewards:
     get:
-      tags:
-        - III. Fitur Utama 2 (Katalog Reward)
-      summary: Mendapatkan Katalog Reward.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: channel
-          in: query
-          schema: {type: integer}
+      tags: [2. Modul Wisatawan]
+      summary: Katalog Produk Spesial (Reward Catalog)
       responses:
-        '200':
-          description: Daftar reward tersedia.
+        '200': {description: Daftar reward yang dapat ditukar}
 
-  /rewards/exchange:
+  /rewards/redeem:
     post:
-      tags:
-        - III. Fitur Utama 2 (Katalog Reward)
-      summary: Menukarkan Point Value menjadi Voucher Digital.
-      description: Mengurangi Point Value pengguna dan mencatat pertukaran sebagai voucher digital (status pending).
-      security:
-        - bearerAuth: []
+      tags: [2. Modul Wisatawan]
+      summary: Penukaran Poin Value dengan Reward
+      security: [{bearerAuth: []}]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExchangeRequest'
+              type: object
+              properties:
+                reward_id: {type: string}
       responses:
-        '200':
-          description: Penukaran berhasil, voucher_code dihasilkan.
-          content:
-            application/json:
-              example: {message: "Penukaran berhasil!", voucher_code: "VOUCHER-XYZ123", new_point_value: 50}
-        '400':
-          description: Point Value tidak mencukupi.
+        '200': {description: Penukaran berhasil, voucher_code diterbitkan}
+
+  # --- 3. MODUL MITRA EKRAF ---
+  /partner/register:
+    post:
+      tags: [3. Modul Mitra Ekraf]
+      summary: Registrasi Mitra Ekraf (Pending Verifikasi)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: {type: string}
+                business_name: {type: string}
+                bank_account: {type: string}
+      responses:
+        '200': {description: Registrasi berhasil, menunggu verifikasi Admin}
+
+  /partner/dashboard:
+    get:
+      tags: [3. Modul Mitra Ekraf]
+      summary: Dashboard Kinerja Mitra Ekraf
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Data KPI (Poin dikeluarkan, Validasi diterima)}
 
   /partner/missions:
     post:
-      tags:
-        - IV. Dasbor Mitra Ekraf
-      summary: Membuat Misi baru (Generator QR Code).
-      description: Mitra membuat Misi baru, sistem menghasilkan ID unik (qr_code_unique_id).
-      security:
-        - bearerAuth: []
+      tags: [3. Modul Mitra Ekraf]
+      summary: Membuat Misi Baru (Template-Based)
+      security: [{bearerAuth: []}]
+      description: Mengajukan Misi Lokal baru (Transaksi/Interaksi/Promosi)
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/MissionRequest'
+              type: object
+              properties:
+                channel_id: {type: string}
+                mission_type: {type: string}
+                reward_points: {type: integer}
       responses:
-        '201':
-          description: Misi berhasil dibuat.
+        '200': {description: Misi berhasil dibuat, menunggu kurasi Channel Owner}
 
-  /partner/exchange/validate:
+  /partner/rewards:
     post:
-      tags:
-        - IV. Dasbor Mitra Ekraf
-      summary: Validasi Voucher oleh Mitra (Sekali Klik).
-      description: Mitra mengkonfirmasi Voucher Digital, mengubah status di database menjadi 'validated' (menutup transaksi).
-      security:
-        - bearerAuth: []
+      tags: [3. Modul Mitra Ekraf]
+      summary: Menambahkan Produk Spesial ke Katalog Reward
+      security: [{bearerAuth: []}]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ValidationRequest'
+              type: object
+              properties:
+                product_name: {type: string}
+                points_cost: {type: integer}
       responses:
-        '200':
-          description: Voucher berhasil divalidasi.
-        '404':
-          description: Voucher tidak ditemukan atau sudah divalidasi.
+        '200': {description: Produk Reward berhasil ditambahkan}
 
-  /owner/analytics/performance:
-    get:
-      tags:
-        - V. Dasbor Pemilik Wisata (Analitik)
-      summary: Mendapatkan Data Analitik Kinerja Channel.
-      description: Data agregat Misi, klaim, dan sirkulasi poin untuk Smart Tourism.
-      security:
-        - bearerAuth: []
+  /partner/validations/confirm:
+    post:
+      tags: [3. Modul Mitra Ekraf]
+      summary: Konfirmasi Penukaran Voucher (Validasi Reward)
+      security: [{bearerAuth: []}]
+      description: Tombol Sekali Klik untuk memvalidasi voucher Wisatawan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                voucher_code: {type: string}
       responses:
-        '200':
-          description: Data analitik berhasil diambil.
-          content:
-            application/json:
-              example: {total_misi_claims: 1200, sirkulasi_poin: 50000, top_missions: [{title: "...", claims: 90}]}
+        '200': {description: Voucher berhasil dikonfirmasi dan dicatat}
+
+  # --- 4. MODUL PEMILIK WISATA ---
+  /owner/channels:
+    post:
+      tags: [4. Modul Pemilik Wisata]
+      summary: Registrasi dan Pembuatan Channel Wisata Baru
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                channel_name: {type: string}
+                location_name: {type: string}
+      responses:
+        '200': {description: Channel berhasil dibuat}
+
+  /owner/dashboard:
+    get:
+      tags: [4. Modul Pemilik Wisata]
+      summary: Status Operasi Channel Owner
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Status operasional, total mitra aktif, permintaan verifikasi baru}
+
+  /owner/partners/pending:
+    get:
+      tags: [4. Modul Pemilik Wisata]
+      summary: Permintaan Verifikasi Mitra Ekraf Baru
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Daftar mitra baru menunggu persetujuan (kurasi)}
+
+  /owner/partners/{id}/verify:
+    post:
+      tags: [4. Modul Pemilik Wisata]
+      summary: Kurasi/Verifikasi Mitra Ekraf oleh Channel Owner
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: id
+          schema: {type: string}
+      responses:
+        '200': {description: Mitra berhasil diverifikasi dan aktif}
+        
+  /owner/funds/allocate:
+    post:
+      tags: [4. Modul Pemilik Wisata]
+      summary: Mengalokasikan Dana PV (Kuota Misi) ke Channel
+      security: [{bearerAuth: []}]
+      description: Mengunci sejumlah PV dari Pool Kemitraan ke Channel tertentu.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                channel_id: {type: string}
+                amount_pv: {type: integer}
+      responses:
+        '200': {description: Alokasi dana PV berhasil dikunci}
+
+  # --- 5. MODUL ADMIN SUPER ---
+  /admin/channels/{id}/verify:
+    post:
+      tags: [5. Modul Admin Super]
+      summary: Verifikasi Channel Wisata (Verifikasi Lembaga)
+      security: [{bearerAuth: []}]
+      description: Admin memverifikasi legalitas dan mengaktifkan Channel Owner.
+      parameters:
+        - in: path
+          name: id
+          schema: {type: string}
+      responses:
+        '200': {description: Channel Owner berhasil diverifikasi}
